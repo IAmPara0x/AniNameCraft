@@ -83,4 +83,3 @@ class RNNModel(nn.Module):
             output[:,i] = y
         
         return output
-

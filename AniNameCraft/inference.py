@@ -29,7 +29,6 @@ class Inference:
         while True:
             x = torch.tensor(self.tokenizer.encode(input_seed, gender, max_len=len(input_seed))).reshape(1,-1).to(self.model.config.device)
             last_logits = self.model(x).squeeze()[-1]
-            print(self._get_prob_dist(last_logits))
             new_char_idx = self._get_prob_dist(last_logits).argmax().item()
 
             if new_char_idx == self.tokenizer.token2idx[self.tokenizer.special_tokens.end_token]:
@@ -105,7 +104,6 @@ class Inference:
             ys = ys[:beam_width]
 
             # Prune beams
-
             idx = 0
             while idx < len(ys):
 
