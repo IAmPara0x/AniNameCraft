@@ -1,8 +1,8 @@
 import argparse
 
-parser = argparse.ArgumentParser(description="A program with subcommands")
+parser = argparse.ArgumentParser(description="AniNameCraft: To craft new names for your anime characters.")
 parser.add_argument("input_name_seed", help="prefix of any length for the name to begin with")
-parser.add_argument("--gender", help="Custom greeting message", choices=["Male", "Female"])
+parser.add_argument("--gender", help="Gender of the character to generate the name for", choices=["Male", "Female"])
 parser.add_argument("--device", help="device on which to run model on", choices=["cpu", "cuda"], default="cpu")
 
 subparsers = parser.add_subparsers(dest="sampling_strategy", description="choose a sampling strategy to generate the name.")
