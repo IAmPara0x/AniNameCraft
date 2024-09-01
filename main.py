@@ -6,10 +6,8 @@ from src.model import RNNConfig,RNNModel, Tokenizer
 import pickle
 
 
-
 if __name__ == "__main__":
     
-
     with open("./weights/base_male_female_tokenizer.pkl", "rb") as f:
         tokenizer: Tokenizer = pickle.load(f)
 
@@ -21,7 +19,6 @@ if __name__ == "__main__":
 
     with torch.no_grad():
         inference = Inference(model,tokenizer, temperature=1.0)
-        name = inference.beam_search("y", "Female")
+        print("Beam search")
+        name = inference.beam_search("r", "Female", beam_width=3)
         print(name)
-
-

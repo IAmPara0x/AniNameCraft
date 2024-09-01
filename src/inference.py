@@ -1,9 +1,19 @@
+from dataclasses import dataclass
 from .model import RNNModel, Tokenizer
 import random
 import torch
 
 from typing import Literal
 
+
+@dataclass
+class Beam:
+
+    input_seed: str
+    score: float
+
+    def add_token(self, new_token: str, token_score: float) -> "Beam":
+        return Beam(self.input_seed + new_token, self.score + token_score)
 
 
 type Gender = Literal["Male"] | Literal["Female"]
@@ -19,6 +29,7 @@ class Inference:
         while True:
             x = torch.tensor(self.tokenizer.encode(input_seed, gender, max_len=len(input_seed))).reshape(1,-1).to(self.model.config.device)
             last_logits = self.model(x).squeeze()[-1]
+            print(self._get_prob_dist(last_logits))
             new_char_idx = self._get_prob_dist(last_logits).argmax().item()
 
             if new_char_idx == self.tokenizer.token2idx[self.tokenizer.special_tokens.end_token]:
@@ -62,56 +73,59 @@ class Inference:
             
             input_seed = input_seed + self.tokenizer.idx2token[new_char_idx]
 
-    def beam_search(self, input_seed: str, gender: Gender, beam_width: int = 3) -> list[str]:
+    def beam_search(self, input_seed: str, gender: Gender, beam_width: int = 3, beam_depth: int = 6) -> list[str]:
 
 
-        beams = [input_seed]
-        beam_scores = [0]
+        beams: list[Beam] = [Beam(input_seed,0)]
+        current_beam_depth = 0
 
-        outputs = []
+        outputs: list[Beam] = []
 
 
         while len(beams) != 0:
-            print(f"{len(beams)=}, {beams=}")
 
-            xs = []
-            for input_seed in beams:
-                xs.append(self.tokenizer.encode(input_seed, gender, max_len=max(len(n) for n in beams)))
-
-            xs = torch.tensor(xs).reshape(len(beams), -1).to(self.model.config.device)
+            xs = torch.tensor( [self.tokenizer.encode(beam.input_seed, gender, max_len=len(input_seed) + current_beam_depth) for beam in beams]
+                             ).reshape(len(beams), -1).to(self.model.config.device)
 
             last_logits = self.model(xs)[:,-1]
-
-            prob_dist = self._get_prob_dist(last_logits).sort(descending=True)
-            candidates, candidates_score = prob_dist.indices, prob_dist.values
+            prob_dist = self._get_prob_dist(last_logits)
 
 
+            ys: list[Beam] = []
 
-            ys = []
-            for (beam_idx,score) in enumerate(beam_scores):
+            for beam_idx, beam in enumerate(beams):
 
-                beam = beams[beam_idx]
-                beam_candidates = candidates[beam_idx]
-                beam_candidates_score = candidates_score[beam_idx]
-
-                for (candidate, candidate_score) in zip(beam_candidates, beam_candidates_score):
-                    ys.append((beam + self.tokenizer.idx2token[candidate.item()], score + torch.log(candidate_score)))
-            
-            ys.sort(key = lambda c: c[1],reverse=True)
-            
+                beam_candidates = torch.log(prob_dist[beam_idx])
+                for (candidate, candidate_score) in enumerate(beam_candidates):
+                    ys.append(beam.add_token(self.tokenizer.idx2token[candidate], candidate_score.item()) )
+       
+            ys.sort(key=lambda c: c.score, reverse=True)
+       
+            # Get Top beams
             ys = ys[:beam_width]
-            
-            for idx, (name, score) in enumerate(ys):
 
+            # Prune beams
+
+            idx = 0
+            while idx < len(ys):
+
+                beam = ys[idx]
                 end_token = self.tokenizer.special_tokens.end_token
-
-                if name[-len(end_token):] == end_token:
-                    outputs.append((name[:-len(end_token)],score.item()))
+        
+                if beam.input_seed[-len(end_token):] == end_token:
+                    outputs.append(Beam(beam.input_seed[:-len(end_token)],beam.score))
                     ys.pop(idx)
-
-            beams = [y[0] for y in ys]
-
-        return outputs
+                elif beam_depth <= current_beam_depth:
+                    outputs.append(beam)
+                    ys.pop(idx)
+                else:
+                    idx += 1
+       
+            beams = ys
+            current_beam_depth += 1
+        
+        outputs.sort(key=lambda b: b.score, reverse=True)
+        return [b.input_seed for b in outputs[:beam_width]]
 
     def _get_prob_dist(self, logits: torch.Tensor) -> torch.Tensor:
         probs = logits.softmax(dim=-1)
